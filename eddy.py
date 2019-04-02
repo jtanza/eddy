@@ -1,8 +1,6 @@
-from collections import namedtuple
-from dataclasses import dataclass
-from typing import Any
-from typing import Dict
+#!/usr/bin/env python3
 
+import argparse
 import curses
 import constants
 import sys
@@ -12,6 +10,7 @@ import time
 class Editor:
 
     def __init__(self):
+        self.args = self.parse_args()
         self.dispatch_table = self.build_dispatch()
         self.key_lookup = Editor.build_key_lookup()
         self.stdscr = Editor.init_screen()
@@ -23,17 +22,16 @@ class Editor:
             self.end_screen()
 
     def run(self):
-        # Handle ags w/ argparse
-        if sys.argv[1:]:
-            self.open_file(sys.argv[1])
+        if self.args.file:
+            self.open_file(self.args.file)
         else:
             self.init_display()
+
         while True:
             self.process_keypress()
 
     def process_keypress(self):
         key = self.stdscr.getch()
-        # self.stdscr.addstr(str(key))
         command = self.key_lookup.get(key)
         if command:
             self.process_command(command)
@@ -43,10 +41,6 @@ class Editor:
     def process_command(self, command):
         if command in self.dispatch_table:
             self.dispatch_table[command]()
-
-    def quit(self):
-        self.stdscr.erase()
-        sys.exit(0)
 
     def right(self):
         y, x = self.stdscr.getyx()
@@ -64,27 +58,44 @@ class Editor:
         y, x = self.stdscr.getyx()
         self.stdscr.move(Editor.update_coord(y, -1, curses.LINES - 1), x),
 
-    def open_file(self, name):
-        with open(name, 'r') as f:
-            for line in f:
-                # TODO truncate long lines
-                self.stdscr.addstr(line)
+    def open_file(self, name, mode='r'):
+        try:
+            with open(name, mode) as f:
+                self.format_file(f)
+        except IOError as err:
+            self.fail(err)
 
-    def file_line(self, line):
-        ret = []
-        while line > curses.COLS - 1:
-            ret.append(line[:curses.COLS - 1] + "\n")
-            line = line[curses.COLS - 1: len(line)]
-        return ret
+    # TODO
+    def format_file(self, file):
+        for line in file:
+            if len(line) < curses.COLS - 1:
+                self.stdscr.addstr(line)
+            else:
+                while len(line) > curses.COLS - 1:
+                    self.stdscr.addstr(line[:curses.COLS - 1])
+                    line = line[curses.COLS - 1: len(line)]
 
     def build_dispatch(self):
         return {
-            "quit": self.quit,
+            "quit": self.clear,
             "right": self.right,
             "left": self.left,
             "down": self.down,
             "up": self.up
         }
+
+    # TODO
+    def fail(self, msg):
+        self.stdscr.addstr(f"FAIL:{msg}")
+
+    def clear(self):
+        self.stdscr.erase()
+        sys.exit(0)
+
+    def parse_args(self):
+        parser = argparse.ArgumentParser(description='Eddy the terminal editor')
+        parser.add_argument('file', nargs='?', help='path to source file')
+        return parser.parse_args()
 
     def init_display(self):
         self.stdscr.addstr(Editor.draw_rows())
@@ -143,7 +154,6 @@ class Editor:
         curses.noecho()
         curses.raw()
         return stdscr
-
 
 if __name__ == "__main__":
     e = Editor()
